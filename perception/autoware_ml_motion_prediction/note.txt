@@ -1,0 +1,7 @@
+concern: object detection range is not long enoug
+attempt to address:
+    - changed point_cloud_range parameter but no impact
+end result: 
+The CenterPoint model’s receptive field is trained for specific ranges. Even with parameter changes, 
+performance degrades beyond its original training range. For longer range detection, finetune model for target distance. 
+
