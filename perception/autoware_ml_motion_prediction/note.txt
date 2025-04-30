@@ -5,3 +5,16 @@ end result:
 The CenterPoint model’s receptive field is trained for specific ranges. Even with parameter changes, 
 performance degrades beyond its original training range. For longer range detection, finetune model for target distance. 
 
+Question to ask: what lidar config should be used in carla that will closely resemble the lidar setup used 
+to create dataset for centerpoint object detection
+
+fix: increasing value of lidar attributes in carla simulation. carla sim. lidar has to closely resemble lidars used to create detection dataset
+** voxel_size, max_voxel_size param. changed in centerpoint_ml_package.param.yaml for better long range detection
+
+Issue 2: during prediction model dataset creation, velocity was negated. Revisit this if problem occurs in the future. 
+
+challenge
+- perception stack unable to detect and estimate vehicle yaw when making turn
+
+
+** Issue of velocity alignment with carla is fixed by frame of velocity from (body-fixed) frame to map frame
