@@ -12,6 +12,8 @@ from lanelet2.io import load, Origin
 from autoware_ml_motion_prediction.nodes.path_generator import *
 from visualization_msgs.msg import Marker, MarkerArray
 from geometry_msgs.msg import Point
+import time
+import uuid
 
 
 class MotionPredictionNode(Node):
@@ -40,10 +42,68 @@ class MotionPredictionNode(Node):
         self.lanelet_map = load(map_path, proj)
 
         self.marker_pub = self.create_publisher(MarkerArray, "visualization_marker_array", 10)
-
+        self.buffers = {}
 
     def ego_pose_callback(self, msg):
         self.ego_pose = msg.pose.pose
+
+    def is_consecutive(self, timestamps, expected_delta=0.1, tolerance=0.01):
+        for i in range(1, len(timestamps)):
+            delta = timestamps[i] - timestamps[i-1]
+            if abs(delta - expected_delta) > tolerance:
+                return False
+        return True
+
+    def uuid_to_str(self, uuid_msg):
+        # uuid_msg.uuid is a numpy array of 16 bytes
+        return str(uuid.UUID(bytes=bytes(uuid_msg.uuid)))
+    
+    import numpy as np
+
+    def preprocess_and_vectorize_paths(self, paths, reference_point, num_paths=3, path_length=29):
+        """
+        Preprocess paths, convert to relative, flatten, and concatenate.
+        Args:
+            paths: List of list of (x, y) tuples.
+            reference_point: (x, y) tuple or np.array of shape (2,)
+            num_paths: Number of paths to output (default 3)
+            path_length: Number of points per path (default 29)
+        Returns:
+            np.array of shape (num_paths * path_length * 2,)
+        """
+        # Step 1: Convert input to numpy arrays for vectorization
+        np_paths = [np.array(p, dtype=np.float32) for p in paths]
+
+        # Step 2: Ensure exactly num_paths
+        if len(np_paths) > num_paths:
+            np_paths = np_paths[:num_paths]
+        elif len(np_paths) < num_paths:
+            while len(np_paths) < num_paths:
+                np_paths.append(np_paths[-1].copy())
+           
+        # Step 3: Pad/truncate each path to path_length
+        processed_paths = []
+        for path in np_paths:
+            if path.shape[0] > path_length:
+                path = path[:path_length]
+            elif path.shape[0] < path_length:
+                if path.shape[0] > 0:
+                    pad = np.tile(path[-1], (path_length - path.shape[0], 1))
+                    path = np.vstack([path, pad])
+                else:
+                    path = np.zeros((path_length, 2), dtype=np.float32)
+            processed_paths.append(path)
+
+        # Step 4: Convert to relative, flatten, and concatenate
+        reference_point = np.array(reference_point, dtype=np.float32)
+        rel_flattened = []
+        for path in processed_paths:
+            rel_path = path - reference_point  # (29, 2)
+            rel_flattened.append(rel_path.flatten())  # (58,)
+        result = np.concatenate(rel_flattened)  # (174,)
+        return result
+
+   
 
 
     def objects_callback(self, msg):
@@ -57,6 +117,13 @@ class MotionPredictionNode(Node):
         
         print("+"*20)
         for obj in msg.objects:  # iterate through detected objects
+
+            agent_id = obj.object_id
+            timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            agent_id = self.uuid_to_str(obj.object_id)
+            if agent_id not in self.buffers:
+                self.buffers[agent_id] = []
+
             #position
             pos = obj.kinematics.pose_with_covariance.pose.position
             # Transform position from Autoware to CARLA coordinate system
@@ -93,13 +160,33 @@ class MotionPredictionNode(Node):
                 # you just turned — allow up to 120° until you’re fully on the new lane
                 filtered_paths = filter_trajectories_by_initial_direction(raw_paths, ego_yaw, max_angle_deg=120.0)
 
+
+
+            # Check gap for existing buffer entries
+            if self.buffers[agent_id]:
+                last_time = self.buffers[agent_id][-1][0]
+                delta = timestamp - last_time
+                if abs(delta - 0.1) > 0.01:  # Tolerance = 0.01s
+                    self.get_logger().info(f"Resetting buffer for {agent_id} due to gap: {delta:.3f}s")
+                    self.buffers[agent_id] = []
+            
+            self.buffers[agent_id].append((timestamp, 0.0))
+            # Trim buffer to last N entries (e.g., N=5)
+            self.buffers[agent_id] = self.buffers[agent_id][-5:]
+            
+            # Proceed only if buffer has N consecutive entries
+            if len(self.buffers[agent_id]) == 5 and self.is_consecutive([t for t, _ in self.buffers[agent_id]]):
+                # Run prediction
+                print('making prediction...')
+                print(filtered_paths[0])
+
             ego_xy = (pos_x, -pos_y)
             for idx, traj in enumerate(filtered_paths):
                 possible_trajectory = [(p[0], p[1]) for p in traj]
                 trimmed = slice_trajectory_ahead_vec(possible_trajectory, ego_xy)
+                print(np.array(trimmed)[4::5, :].shape)
+
                 trimmed = np.array(trimmed)[4::5, :].tolist()
-                
-                
 
                 marker = Marker()
                 marker.header.frame_id = "map"
