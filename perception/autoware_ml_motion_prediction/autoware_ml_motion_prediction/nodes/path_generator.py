@@ -172,3 +172,48 @@ def slice_trajectory_ahead_vec(traj_xy, ego_xy):
     trimmed = np.vstack([proj_pt, pts[idx+1:]])
 
     return trimmed
+
+
+'''
+
+# get possible trajectories--------------------------------------------------------------------
+current_lanelets = find_current_lanelets(lanelet_map, vehicle.get_location().x, -vehicle.get_location().y)
+graph = build_routing_graph(lanelet_map)
+raw_paths = []
+for lanelet in current_lanelets:
+    paths = get_candidate_paths(lanelet_map, graph, lanelet, max_distance=50.0)
+    for path in paths:
+        traj = lanelet_sequence_to_trajectory(path, step=0.5)
+        raw_paths.append(traj)
+
+
+
+
+ego_yaw = -math.radians(vehicle.get_transform().rotation.yaw)
+filtered_paths = filter_trajectories_by_initial_direction(raw_paths, ego_yaw, max_angle_deg=60.0)
+if not filtered_paths:
+    # you just turned — allow up to 120° until you’re fully on the new lane
+    filtered_paths = filter_trajectories_by_initial_direction(raw_paths, ego_yaw, max_angle_deg=120.0)
+
+
+#print("vehicle yaw degree", vehicle.get_transform().rotation.yaw)
+print("raw path", np.array(raw_paths[0]).shape)
+
+
+sliced_filtered_paths = []
+pos_x, pos_y = vehicle.get_location().x, -vehicle.get_location().y
+for path in filtered_paths:
+    sliced_traj = slice_trajectory_ahead_vec(np.array(path)[:, :2], (pos_x, pos_y))
+    sliced_filtered_paths.append(sliced_traj.tolist())
+
+autoware_relative_possible_t = preprocess_and_vectorize_paths(
+    sliced_filtered_paths, 
+    [pos_x, pos_y], 
+    traj_x_scaler=loaded_traj_x_scaler,
+    traj_y_scaler=loaded_traj_y_scaler,
+    pos_x_scaler=loaded_pos_x_scaler,
+    pos_y_scaler=loaded_pos_y_scaler
+)
+
+
+'''
