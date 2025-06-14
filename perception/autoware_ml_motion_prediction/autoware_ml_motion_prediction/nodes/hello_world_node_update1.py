@@ -19,8 +19,8 @@ import torch
 from autoware_ml_motion_prediction.nodes.model.relative_model import EnhancedCombinedEncoder, MotionPredictionDecoder
 from autoware_ml_motion_prediction.nodes.model.util import relative_to_global_trajectory_realtime
 from autoware_ml_motion_prediction.nodes.publishers import TrajectoryPublisher
-from autoware_ml_motion_prediction.nodes.util import uuid_to_str, autoware_to_carla_yaw, is_consecutive, calculate_autoware_lanelet_boundary_dists
-
+from autoware_ml_motion_prediction.nodes.util import uuid_to_str, preprocess_and_vectorize_paths
+from autoware_ml_motion_prediction.nodes.util import is_consecutive, calculate_autoware_lanelet_boundary_dists_with_next
 
 class MotionPredictionNode(Node):
     def __init__(self):
@@ -96,12 +96,11 @@ class MotionPredictionNode(Node):
 
         self.get_logger().info(f'Received {len(msg.objects)} tracked objects.')
         
-        print("+"*20)
         for obj_id, obj in enumerate(msg.objects):  # iterate through detected objects
 
             agent_id = obj.object_id
             timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-            agent_id = self.uuid_to_str(obj.object_id)
+            agent_id = uuid_to_str(obj.object_id)
             if agent_id not in self.buffers:
                 self.buffers[agent_id] = []
 
@@ -116,6 +115,7 @@ class MotionPredictionNode(Node):
             quat = (ori.x,ori.y,ori.z,ori.w)
             _, _, yaw = euler_from_quaternion(quat)
             sim_yaw_match = -math.degrees(yaw)
+            sim_yaw_match = (sim_yaw_match + 180) % 360 - 180
            
             #velocity
             # Transform velocity from Autoware to CARLA coordinate system
@@ -139,7 +139,7 @@ class MotionPredictionNode(Node):
             vehicle_at_traffic_light = int(False)
 
             #getting vehicle to lane boundary distance
-            center_lane_boundary_distance, right_lane_boundary_distance, left_lane_boundary_distance = calculate_autoware_lanelet_boundary_dists(self.lanelet_map, self.graph, pos_x, pos_y, sim_yaw_match)
+            center_lane_boundary_distance, right_lane_boundary_distance, left_lane_boundary_distance = calculate_autoware_lanelet_boundary_dists_with_next(self.lanelet_map, self.graph, pos_x, pos_y, sim_yaw_match)
 
 
             # scaling features
@@ -167,9 +167,9 @@ class MotionPredictionNode(Node):
             # 2) down-sample (or skip entirely)
             sliced_paths = [traj if len(traj) < 5 else traj[4::5] for traj in sliced_full]
             # 3) filter by direction
-            filtered = filter_trajectories_by_initial_direction(sliced_paths, sim_yaw_match, 60.0)
+            filtered = filter_trajectories_by_initial_direction(sliced_paths, yaw, 60.0)
             if not filtered:
-                filtered = filter_trajectories_by_initial_direction(sliced_paths, sim_yaw_match, 120.0)
+                filtered = filter_trajectories_by_initial_direction(sliced_paths, yaw, 120.0)
 
             scaled_possible_trajectories = preprocess_and_vectorize_paths(
                 filtered, [pos_x, pos_y], num_paths=3, path_length=29,
@@ -199,7 +199,7 @@ class MotionPredictionNode(Node):
             self.buffers[agent_id] = self.buffers[agent_id][-5:]
             
             # Proceed only if buffer has N consecutive entries
-            if len(self.buffers[agent_id]) == 5 and self.is_consecutive([t for t, _ in self.buffers[agent_id]]):
+            if len(self.buffers[agent_id]) == 5 and is_consecutive([t for t, _ in self.buffers[agent_id]]):
                 # Run prediction
                 features_to_stack = [entry[1] for entry in self.buffers[agent_id]]
                 stacked = np.stack(features_to_stack, axis=0)  # shape will be (5, 186)
@@ -214,7 +214,7 @@ class MotionPredictionNode(Node):
                     decoder_output_x = [self.loaded_pos_x_scaler.inverse_transform([[item]])[0][0] for item in decoder_output_x]
                     decoder_output_y = decoder_output.cpu().reshape(10,2)[:,1]
                     decoder_output_y = [self.loaded_pos_y_scaler.inverse_transform([[item]])[0][0] for item in decoder_output_y]
-                    self.trajectory_publisher.publish_trajectory([decoder_output_x, decoder_output_y], obj_id)
+                    self.pred_trajectory_pub.publish_trajectory([decoder_output_x, decoder_output_y], obj_id)
 
 def main(args=None):
     rclpy.init(args=args)
