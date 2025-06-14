@@ -1,3 +1,8 @@
+from rclpy.node import Node
+from visualization_msgs.msg import Marker, MarkerArray
+from geometry_msgs.msg import Point
+
+
 class TrajectoryPublisher(Node):
     def __init__(self):
         super().__init__('trajectory_publisher')

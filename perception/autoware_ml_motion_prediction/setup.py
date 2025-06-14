@@ -5,7 +5,7 @@ package_name = 'autoware_ml_motion_prediction'
 setup(
     name=package_name,
     version='0.0.0',
-    packages=find_packages(exclude=['test']),
+    packages=find_packages(include=['autoware_ml_motion_prediction', 'autoware_ml_motion_prediction.*']),
     data_files=[
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
@@ -20,7 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'hello_world_node = autoware_ml_motion_prediction.nodes.hello_world_node:main'
+            'hello_world_node = autoware_ml_motion_prediction.nodes.hello_world_node:main',
+            'hello_world_node_update1 = autoware_ml_motion_prediction.nodes.hello_world_node_update1:main'
         ],
     },
 )
