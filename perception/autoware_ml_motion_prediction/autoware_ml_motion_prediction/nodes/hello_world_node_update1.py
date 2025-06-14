@@ -61,15 +61,16 @@ class MotionPredictionNode(Node):
         self.world = client.get_world()
 
         # Load the scalers
-        self.loaded_pos_x_scaler = joblib.load('./scalers_large/pos_x_scaler.save')
-        self.loaded_pos_y_scaler = joblib.load('./scalers_large/pos_y_scaler.save')
-        self.loaded_vel_x_scaler = joblib.load('./scalers_large/vel_x_scaler.save')
-        self.loaded_vel_y_scaler = joblib.load('./scalers_large/vel_y_scaler.save')
-        self.loaded_yaw_scaler = joblib.load('./scalers_large/yaw_scaler.save')
-        self.loaded_heading_scaler = joblib.load('./scalers_large/heading_scaler.save')
-        self.loaded_traj_x_scaler = joblib.load('./scalers_large/traj_x_scaler.save')
-        self.loaded_traj_y_scaler = joblib.load('./scalers_large/traj_y_scaler.save')
-        self.loaded_boundary_distance_scaler = joblib.load('./scalers_large/boundary_distance_scaler.save')
+        node_dir = os.path.dirname(os.path.realpath(__file__))
+        self.loaded_pos_x_scaler = joblib.load(os.path.join(node_dir,'scalers_large/pos_x_scaler.save'))
+        self.loaded_pos_y_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/pos_y_scaler.save'))
+        self.loaded_vel_x_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/vel_x_scaler.save'))
+        self.loaded_vel_y_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/vel_y_scaler.save'))
+        self.loaded_yaw_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/yaw_scaler.save'))
+        self.loaded_heading_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/heading_scaler.save'))
+        self.loaded_traj_x_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/traj_x_scaler.save'))
+        self.loaded_traj_y_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/traj_y_scaler.save'))
+        self.loaded_boundary_distance_scaler = joblib.load(os.path.join(node_dir,'./scalers_large/boundary_distance_scaler.save'))
 
         # Load model
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -83,7 +84,7 @@ class MotionPredictionNode(Node):
             hidden_size=256, 
         output_size=20).to(self.device)
 
-        self.decoder.load_state_dict(torch.load("./relative_t_pt_model_ckpt_lr_001_e100_b32_update1.pt", weights_only=True))
+        self.decoder.load_state_dict(torch.load(os.path.join(node_dir,"model/relative_t_pt_model_ckpt_lr_001_e100_b32_update1.pt"), weights_only=True))
         self.decoder.eval()
 
     def ego_pose_callback(self, msg):
